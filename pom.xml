@@ -53,6 +53,12 @@
             <version>3.5.17</version>
         </dependency>
         <dependency>
+            <!-- MP 3.5.9+ 分页插件拆分模块，PaginationInnerInterceptor 在此 -->
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>3.5.17</version>
+        </dependency>
+        <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
@@ -99,6 +105,14 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- MySQL 部署前跳过 @Tag("db") 集成测试（Deferred 模式）；MySQL 就绪后删除本配置即跑全量 -->
+                    <excludedGroups>db</excludedGroups>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

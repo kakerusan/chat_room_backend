@@ -1,0 +1,26 @@
+Task 3 — BCrypt admin seed hash generation evidence
+Date: 2026-09-03
+Tool: jshell + spring-security-crypto-7.1.1.jar + spring-core (BCryptPasswordEncoder(10))
+
+Generation:
+  encode("admin123456") => $2a$10$RRA8lBwKVoiqkZQ0y7fR0O9txMzKdGFi52qf/sRjob4aHIL21io3i
+
+Verification (jshell output):
+  MATCH=true   (admin123456)
+  WRONG=false  (wrongpass)
+
+Deferred (MySQL not deployed):
+  - Flyway V1/V2 actual execution against chatroom_lab
+  - flyway_schema_history rows
+  - users table inspection (admin/ADMIN/$2a$...)
+  Tracked for T35 (MySQL 集成恢复). See task-3-deferred items in T35 scope.
+
+V1 static self-check:
+  [x] 6 tables present: users / chat_messages / stored_files / upload_sessions / upload_chunks / network_test_runs
+  [x] users: uk_users_username unique
+  [x] upload_chunks: uk_upload_chunk(upload_id, chunk_index) unique (idempotency core)
+  [x] upload_sessions: uk_upload_id unique + idx_upload_expire
+  [x] DATETIME(3) with CURRENT_TIMESTAMP(3) defaults
+  [x] InnoDB + utf8mb4 on all tables
+  [x] No reserved words used as identifiers
+  [x] All external-value columns use parameter binding at app layer (#{} enforced by code review)

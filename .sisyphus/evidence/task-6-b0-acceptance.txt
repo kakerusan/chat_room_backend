@@ -1,0 +1,19 @@
+﻿B0 acceptance (MySQL Deferred mode)
+Date: 2026-09-03
+
+1. mvnw clean test: BUILD SUCCESS, Tests run: 11, Failures: 0, Errors: 0
+   - ApiResponseTest 3 pass
+   - GlobalExceptionHandlerTest 4 pass (health 200 / 500 no-stacktrace / 409 mapping / factories)
+   - JwtSecretValidatorTest 4 pass (null/blank/short/valid)
+   - db-tag tests (TagSmokeTest, contextLoads) correctly excluded by surefire excludedGroups=db
+2. mvnw package -DskipTests: BUILD SUCCESS, fat jar 54MB generated
+3. MyBatis-Plus jsqlparser fix: added com.baomidou:mybatis-plus-jsqlparser:3.5.17
+   (PaginationInnerInterceptor moved out of core since MP 3.5.9 — recorded as deviation note)
+
+DEFERRED-DB items (restored by T35):
+- Full context startup with datasource+Flyway against chatroom_lab
+- Flyway V1/V2 migration execution verification
+- /api/health live curl check
+- /actuator/health live check
+- jar standalone run smoke
+

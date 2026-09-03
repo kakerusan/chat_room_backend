@@ -1,0 +1,12 @@
+Task 3 — DEFERRED-DB items (awaiting MySQL deployment, restored by T35)
+Date: 2026-09-03
+
+1. Flyway migration execution (V1+V2) against chatroom_lab
+   Original QA: start app -> log "Successfully applied 2 migrations" -> SHOW TABLES contains 7+flyway_schema_history
+   Restore condition: MySQL deployed
+2. Admin seed row verification
+   Original QA: SELECT username,role,LEFT(password_hash,4) FROM users -> admin/ADMIN/$2a$
+   Restore condition: MySQL deployed
+3. Repeat startup idempotency
+   Original QA: flyway_schema_history still exactly one row per version
+   Restore condition: MySQL deployed
