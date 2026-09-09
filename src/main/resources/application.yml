@@ -2,7 +2,8 @@ spring:
   application:
     name: chatBackend
   datasource:
-    url: jdbc:mysql://localhost:3306/chatroom_lab?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    # Docker MySQL 映射 3307（本机 3306 已被占用）；自部署改此处即可
+    url: jdbc:mysql://localhost:3307/chatroom_lab?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: chatroom
     password: chatroom123
   servlet:
@@ -12,7 +13,7 @@ spring:
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
-  type-aliases-package: fun.hatsumi.chatbackend.user.entity,fun.hatsumi.chatbackend.chat.entity,fun.hatsumi.chatbackend.file.entity
+  type-aliases-package: fun.hatsumi.chatbackend.user.entity,fun.hatsumi.chatbackend.chat.entity,fun.hatsumi.chatbackend.file.entity,fun.hatsumi.chatbackend.network.entity
   configuration:
     map-underscore-to-camel-case: true
   global-config:
@@ -22,7 +23,8 @@ mybatis-plus:
 chatroom:
   jwt:
     issuer: chatroom-lab
-    secret: ${CHATROOM_JWT_SECRET:}
+    # 生产环境务必用环境变量覆盖 CHATROOM_JWT_SECRET；dev 默认值仅满足 >=32 字节校验
+    secret: ${CHATROOM_JWT_SECRET:dev-only-secret-0123456789abcdef0123456789abcdef}
     expire-hours: 12
   storage-root: ./data/storage
   log-root: ./data/logs/network-tests
