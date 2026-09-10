@@ -1,3 +1,7 @@
+server:
+  # 8080 被 Hyper-V/WSL 动态端口保留区占用（8021-8520），改用 10001
+  port: 10001
+
 spring:
   application:
     name: chatBackend
