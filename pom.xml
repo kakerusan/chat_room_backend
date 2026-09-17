@@ -94,6 +94,13 @@
         </dependency>
 
         <dependency>
+            <!-- AWS SDK v2：RustFS（S3 兼容）客户端。>=2.30.0 必须配置 WHEN_REQUIRED 校验策略，见 S3ClientConfig -->
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.39.6</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>

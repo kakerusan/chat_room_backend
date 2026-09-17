@@ -13,7 +13,7 @@ import fun.hatsumi.chatbackend.auth.interceptor.CurrentUser;
 import fun.hatsumi.chatbackend.common.exception.BusinessException;
 import fun.hatsumi.chatbackend.file.entity.StoredFileEntity;
 import fun.hatsumi.chatbackend.file.mapper.StoredFileMapper;
-import fun.hatsumi.chatbackend.file.storage.StorageService;
+import fun.hatsumi.chatbackend.file.storage.StorageBackend;
 import fun.hatsumi.chatbackend.user.entity.UserEntity;
 import fun.hatsumi.chatbackend.user.mapper.UserMapper;
 
@@ -27,9 +27,9 @@ public class FileService {
 
     private final UserMapper userMapper;
 
-    private final StorageService storage;
+    private final StorageBackend storage;
 
-    public FileService(StoredFileMapper fileMapper, UserMapper userMapper, StorageService storage) {
+    public FileService(StoredFileMapper fileMapper, UserMapper userMapper, StorageBackend storage) {
         this.fileMapper = fileMapper;
         this.userMapper = userMapper;
         this.storage = storage;
@@ -101,7 +101,7 @@ public class FileService {
         storage.delete(file.getRelativePath());
     }
 
-    public StorageService storage() {
+    public StorageBackend backend() {
         return storage;
     }
 }

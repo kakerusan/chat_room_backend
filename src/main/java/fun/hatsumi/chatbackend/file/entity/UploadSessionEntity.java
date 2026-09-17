@@ -47,6 +47,14 @@ public class UploadSessionEntity {
     @TableField("status")
     private String status;
 
+    /** S3 multipart uploadId（local 模式为空） */
+    @TableField("backend_upload_id")
+    private String backendUploadId;
+
+    /** 会话创建时生成的后端无关存储 key */
+    @TableField("target_key")
+    private String targetKey;
+
     @TableField("expire_at")
     private LocalDateTime expireAt;
 

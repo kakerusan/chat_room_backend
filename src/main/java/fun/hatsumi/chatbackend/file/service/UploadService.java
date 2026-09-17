@@ -26,7 +26,7 @@ import fun.hatsumi.chatbackend.file.entity.UploadChunkEntity;
 import fun.hatsumi.chatbackend.file.entity.UploadSessionEntity;
 import fun.hatsumi.chatbackend.file.mapper.UploadChunkMapper;
 import fun.hatsumi.chatbackend.file.mapper.UploadSessionMapper;
-import fun.hatsumi.chatbackend.file.storage.StorageService;
+import fun.hatsumi.chatbackend.file.storage.StorageBackend;
 
 /**
  * 分块上传业务：会话创建、差错模拟、摘要校验、幂等、合并。
@@ -36,13 +36,19 @@ public class UploadService {
 
     private static final Logger log = LoggerFactory.getLogger(UploadService.class);
 
+    /**
+     * S3 multipart 非最后分片的最小分片大小（5 MiB）。两种后端统一执行该下限，
+     * 保证会话在后端间语义一致（单块上传不受限）。
+     */
+    public static final int MIN_CHUNK_SIZE = 5 * 1024 * 1024;
+
     private final UploadSessionMapper sessionMapper;
 
     private final UploadChunkMapper chunkMapper;
 
     private final fun.hatsumi.chatbackend.file.mapper.StoredFileMapper fileMapper;
 
-    private final StorageService storage;
+    private final StorageBackend storage;
 
     private final ChatroomProperties properties;
 
@@ -51,7 +57,7 @@ public class UploadService {
 
     public UploadService(UploadSessionMapper sessionMapper, UploadChunkMapper chunkMapper,
             fun.hatsumi.chatbackend.file.mapper.StoredFileMapper fileMapper,
-            StorageService storage, ChatroomProperties properties) {
+            StorageBackend storage, ChatroomProperties properties) {
         this.sessionMapper = sessionMapper;
         this.chunkMapper = chunkMapper;
         this.fileMapper = fileMapper;
@@ -63,15 +69,24 @@ public class UploadService {
     }
 
     /**
-     * 创建上传会话，返回会话与已上传块（断点续传时非空）。
+     * 创建上传会话：校验分块下限，生成后端无关 targetKey，初始化后端上传上下文。
      */
     public UploadSessionEntity createSession(Long userId, String fileName, long fileSize, int chunkSize,
             int totalChunks, String fileSha256, String scope) {
         if (!"PUBLIC".equals(scope) && !"PRIVATE".equals(scope)) {
             throw BusinessException.badRequest("scope 必须为 PUBLIC 或 PRIVATE");
         }
+        if (totalChunks > 1 && chunkSize < MIN_CHUNK_SIZE) {
+            throw BusinessException.badRequest(
+                    "多块上传的 chunkSize 必须 >= 5 MiB（当前 " + chunkSize + " 字节）");
+        }
+
+        String uploadId = UUID.randomUUID().toString().replace("-", "");
+        String targetKey = StorageBackend.newTargetKey(scope, userId, fileName);
+        String backendUploadId = storage.initUpload(uploadId, targetKey);
+
         UploadSessionEntity session = new UploadSessionEntity();
-        session.setUploadId(UUID.randomUUID().toString().replace("-", ""));
+        session.setUploadId(uploadId);
         session.setOwnerId(userId);
         session.setScope(scope);
         session.setFileName(fileName);
@@ -80,6 +95,8 @@ public class UploadService {
         session.setTotalChunks(totalChunks);
         session.setFileSha256(fileSha256);
         session.setStatus("INIT");
+        session.setBackendUploadId(backendUploadId);
+        session.setTargetKey(targetKey);
         session.setExpireAt(LocalDateTime.now().plusHours(24));
         session.setCreatedAt(LocalDateTime.now());
         sessionMapper.insert(session);
@@ -116,13 +133,15 @@ public class UploadService {
             throw BusinessException.unprocessable("分块 SHA-256 校验失败");
         }
 
-        storage.writeChunk(uploadId, chunkIndex, data);
+        String etag = storage.putChunk(uploadId, session.getBackendUploadId(),
+                session.getTargetKey(), chunkIndex, data);
 
         UploadChunkEntity chunk = new UploadChunkEntity();
         chunk.setUploadId(uploadId);
         chunk.setChunkIndex(chunkIndex);
         chunk.setChunkSize(data.length);
         chunk.setChunkSha256(serverSha256);
+        chunk.setEtag(etag);
         chunk.setCreatedAt(LocalDateTime.now());
         try {
             chunkMapper.insert(chunk);
@@ -141,48 +160,50 @@ public class UploadService {
     }
 
     /**
-     * 完成上传：块齐全校验 → 流式合并 → 完整摘要校验 → 原子落位 → 写库。
+     * 完成上传：块齐全校验 → 后端终结（合并/CompleteMultipart）→ 完整摘要校验 → 写库。
      */
     public fun.hatsumi.chatbackend.file.entity.StoredFileEntity complete(Long userId, String uploadId) {
         UploadSessionEntity session = requireOwnedSession(userId, uploadId);
-        List<Integer> uploaded = uploadedChunkIndexes(uploadId);
-        if (uploaded.size() != session.getTotalChunks()) {
-            throw BusinessException.conflict("分块不完整：已传 " + uploaded.size() + "/" + session.getTotalChunks());
+        List<UploadChunkEntity> chunks = chunkMapper.selectList(new LambdaQueryWrapper<UploadChunkEntity>()
+                .eq(UploadChunkEntity::getUploadId, uploadId)
+                .orderByAsc(UploadChunkEntity::getChunkIndex));
+        if (chunks.size() != session.getTotalChunks()) {
+            throw BusinessException.conflict("分块不完整：已传 " + chunks.size() + "/" + session.getTotalChunks());
         }
 
         session.setStatus("MERGING");
         sessionMapper.updateById(session);
 
         try {
-            var target = storage.randomStoredPath(session.getScope(), session.getOwnerId(), session.getFileName());
-            var tempTarget = target.resolveSibling(target.getFileName() + ".merging");
-
-            String mergedSha256 = storage.mergeChunks(uploadId, session.getTotalChunks(), tempTarget);
+            List<StorageBackend.UploadedPart> parts = chunks.stream()
+                    .map(c -> new StorageBackend.UploadedPart(c.getChunkIndex(), c.getEtag()))
+                    .toList();
+            StorageBackend.CompletedUpload completed = storage.completeUpload(
+                    uploadId, session.getBackendUploadId(), session.getTargetKey(), parts);
 
             String expected = session.getFileSha256();
-            if (expected != null && !expected.isBlank() && !expected.equalsIgnoreCase(mergedSha256)) {
-                storage.cleanupTemp(uploadId);
-                storage.delete(relativeOf(tempTarget));
+            if (expected != null && !expected.isBlank() && !expected.equalsIgnoreCase(completed.sha256Hex())) {
+                storage.delete(completed.key());
+                storage.cleanupUpload(uploadId);
                 throw BusinessException.unprocessable("完整文件 SHA-256 不一致");
             }
-
-            storage.atomicMove(tempTarget, target);
 
             var file = new fun.hatsumi.chatbackend.file.entity.StoredFileEntity();
             file.setOwnerId("PUBLIC".equals(session.getScope()) ? null : session.getOwnerId());
             file.setScope(session.getScope());
             file.setOriginalName(session.getFileName());
-            file.setStoredName(target.getFileName().toString());
-            file.setRelativePath(relativeOf(target));
+            file.setStoredName(storedNameOf(completed.key()));
+            file.setRelativePath(completed.key());
             file.setSizeBytes(session.getFileSize());
-            file.setSha256(mergedSha256);
+            file.setSha256(completed.sha256Hex());
             file.setCreatedAt(LocalDateTime.now());
             fileMapper.insert(file);
 
             session.setStatus("COMPLETED");
             sessionMapper.updateById(session);
-            storage.cleanupTemp(uploadId);
-            log.info("Upload completed: uploadId={}, file={}, sha={}", uploadId, session.getFileName(), mergedSha256);
+            storage.cleanupUpload(uploadId);
+            log.info("Upload completed: uploadId={}, file={}, sha={}",
+                    uploadId, session.getFileName(), completed.sha256Hex());
             return file;
         } catch (BusinessException e) {
             session.setStatus("INIT"); // 允许重试
@@ -192,7 +213,7 @@ public class UploadService {
     }
 
     /**
-     * 定时清理过期上传会话及其临时分块（每小时一次）。
+     * 定时清理过期上传会话及其临时资源（每小时一次）。
      */
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 3_600_000)
     public void evictExpiredSessions() {
@@ -200,7 +221,8 @@ public class UploadService {
                 .lt(UploadSessionEntity::getExpireAt, LocalDateTime.now())
                 .ne(UploadSessionEntity::getStatus, "COMPLETED"));
         for (UploadSessionEntity session : expired) {
-            storage.cleanupTemp(session.getUploadId());
+            storage.abortUpload(session.getUploadId(), session.getBackendUploadId(), session.getTargetKey());
+            storage.cleanupUpload(session.getUploadId());
             session.setStatus("EXPIRED");
             sessionMapper.updateById(session);
             log.info("Upload session expired: {}", session.getUploadId());
@@ -249,7 +271,9 @@ public class UploadService {
         }
     }
 
-    private String relativeOf(Path path) {
-        return path.toString().replace('\\', '/');
+    /** 从 key（public/xxx 或 users/{id}/xxx）提取存储文件名。 */
+    private static String storedNameOf(String key) {
+        int slash = key.lastIndexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
     }
 }

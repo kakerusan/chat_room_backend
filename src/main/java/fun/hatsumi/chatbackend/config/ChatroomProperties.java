@@ -36,8 +36,36 @@ public class ChatroomProperties {
     /** NIO 基准服务端口。 */
     private int nioBenchmarkPort = 9102;
 
+    /** 文件存储后端配置。 */
+    private Storage storage = new Storage();
+
     /** WebSocket 相关参数。 */
     private Ws ws = new Ws();
+
+    /**
+     * 文件存储后端：local（本地磁盘，缺省）/ s3（RustFS 对象存储）。
+     */
+    @Data
+    public static class Storage {
+
+        /** local | s3。 */
+        private String type = "local";
+
+        /** S3 API 端点（仅 s3 模式生效）。 */
+        private String endpoint = "http://localhost:9000";
+
+        /** 访问密钥。 */
+        private String accessKey = "chatroom-dev";
+
+        /** 私有密钥。 */
+        private String secretKey = "chatroom-dev-secret";
+
+        /** 存储桶名。 */
+        private String bucket = "chatroom-files";
+
+        /** 签名区域（RustFS 默认 us-east-1）。 */
+        private String region = "us-east-1";
+    }
 
     @Data
     public static class Ws {

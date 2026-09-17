@@ -32,6 +32,14 @@ chatroom:
     expire-hours: 12
   storage-root: ./data/storage
   log-root: ./data/logs/network-tests
+  # 文件存储后端：local（缺省，本地磁盘）/ s3（RustFS 对象存储，docker compose up -d rustfs）
+  storage:
+    type: local
+    endpoint: http://localhost:9000
+    access-key: ${RUSTFS_ACCESS_KEY:chatroom-dev}
+    secret-key: ${RUSTFS_SECRET_KEY:chatroom-dev-secret}
+    bucket: chatroom-files
+    region: us-east-1
   error-simulation-rate: 0.20
   error-simulation-seed:
   tcp-port: 9001

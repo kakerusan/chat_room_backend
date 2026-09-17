@@ -50,13 +50,15 @@ public class UploadController {
                 UserContext.currentUserId(),
                 request.fileName(),
                 request.fileSize(),
-                request.chunkSize() == null ? 2 * 1024 * 1024 : request.chunkSize(),
+                request.chunkSize() == null ? UploadService.MIN_CHUNK_SIZE : request.chunkSize(),
                 request.totalChunks(),
                 request.fileSha256(),
                 request.scope() == null ? "PUBLIC" : request.scope());
+        // chunkSize 回传：客户端必须以服务端实际生效值为准切块
         return ApiResponse.ok(Map.of(
                 "uploadId", session.getUploadId(),
-                "uploadedChunks", List.of()));
+                "uploadedChunks", List.of(),
+                "chunkSize", session.getChunkSize()));
     }
 
     /**

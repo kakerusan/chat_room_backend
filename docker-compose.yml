@@ -14,5 +14,25 @@ services:
       - chatroom-mysql-data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
+  # RustFS：S3 兼容对象存储（文件模块 type=s3 时使用）
+  # 控制台映射 9120：宿主机 9001 被 TCP echo 占用，9100 落在 Hyper-V 排除区（9015-9114）
+  # 具名卷规避 uid 10001 宿主目录属主问题（不用 bind-mount）
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: chatroom-rustfs
+    ports:
+      - "9000:9000"   # S3 API
+      - "9120:9001"   # Web 控制台（http://localhost:9120）
+    environment:
+      RUSTFS_ACCESS_KEY: chatroom-dev
+      RUSTFS_SECRET_KEY: chatroom-dev-secret
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - chatroom-rustfs-data:/data
+    restart: unless-stopped
+
 volumes:
   chatroom-mysql-data:
+  chatroom-rustfs-data:

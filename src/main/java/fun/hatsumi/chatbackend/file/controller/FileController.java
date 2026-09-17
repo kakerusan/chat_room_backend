@@ -1,6 +1,5 @@
 package fun.hatsumi.chatbackend.file.controller;
 
-import java.io.IOException;
 import java.io.InputStream;
 
 import org.springframework.core.io.InputStreamResource;
@@ -43,7 +42,7 @@ public class FileController {
             org.springframework.http.HttpEntity<Void> entity) {
         StoredFileEntity file = fileService.authorizeDownload(UserContext.get(), fileId);
 
-        long fileSize = fileService.storage().size(file.getRelativePath());
+        long fileSize = fileService.backend().size(file.getRelativePath());
         String rangeHeader = entity.getHeaders().getFirst(HttpHeaders.RANGE);
 
         HttpHeaders headers = new HttpHeaders();
@@ -79,22 +78,9 @@ public class FileController {
             }
             end = Math.min(end, fileSize - 1);
 
-            final long skip = start;
-            final long length = end - start + 1;
-            InputStream in = fileService.storage().openStream(file.getRelativePath());
-            try {
-                long skipped = in.skip(skip);
-                if (skipped < skip) {
-                    in.close();
-                    return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).build();
-                }
-            } catch (IOException e) {
-                try {
-                    in.close();
-                } catch (IOException ignored) {
-                }
-                throw new RuntimeException(e);
-            }
+            long length = end - start + 1;
+            // 后端精确定位（local: FileChannel.position；S3: Range GET）
+            InputStream in = fileService.backend().openStream(file.getRelativePath(), start, end);
             headers.setContentLength(length);
             headers.set(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize);
             return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
@@ -103,7 +89,7 @@ public class FileController {
                     .body(new InputStreamResource(in));
         }
 
-        InputStream in = fileService.storage().openStream(file.getRelativePath());
+        InputStream in = fileService.backend().openStream(file.getRelativePath(), null, null);
         headers.setContentLength(fileSize);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)

@@ -31,6 +31,10 @@ public class UploadChunkEntity {
     @TableField("chunk_sha256")
     private String chunkSha256;
 
+    /** S3 分片 ETag（local 模式为空） */
+    @TableField("etag")
+    private String etag;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 }
